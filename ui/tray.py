@@ -142,6 +142,7 @@ class TrayManager(QObject):
             "gemini": "Gemini (Google)",
             "deepseek": "DeepSeek",
             "maritaca": "Sabia (Maritaca)",
+            "portal": "Seu Nono (portal)",
             "ollama": "Ollama (local)",
             "lmstudio": "LM Studio (local)",
         }

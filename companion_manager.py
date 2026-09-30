@@ -532,6 +532,10 @@ class CompanionManager(QObject):
                 # provedor generico compativel com a API da OpenAI.
                 from ai.openai_compat_provider import OpenAICompatProvider
                 self._llm = OpenAICompatProvider(**cfg.provedores_openai_compat()[provider])
+            elif provider == "portal":
+                # Modo portal: a resposta vem do Seu Nono do site, com fontes.
+                from ai.portal_provider import PortalProvider
+                self._llm = PortalProvider()
             else:
                 _ensure_ollama_running()
                 from ai.ollama_provider import OllamaProvider

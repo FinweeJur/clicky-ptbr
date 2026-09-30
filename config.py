@@ -115,6 +115,15 @@ class Config:
     maritaca_api_key: Optional[str] = field(default_factory=lambda: os.getenv("AI_API_KEY_MARITACA") or None)
     maritaca_base_url: str = field(default_factory=lambda: os.getenv("MARITACA_BASE_URL", "https://chat.maritaca.ai/api"))
     maritaca_model: str = field(default_factory=lambda: os.getenv("MARITACA_MODEL", "sabiazinho-4"))
+    # Portal Controle Popular: quando ligado, o companheiro pergunta ao Seu Nono
+    # pelo endpoint /api/companheiro — o portal guarda o RAG e as chaves.
+    portal_ativo: bool = field(default_factory=lambda: os.getenv(
+        "CLICKY_PORTAL_ATIVO", "0"
+    ).strip().lower() in ("1", "true", "sim", "yes", "on"))
+    portal_url: str = field(default_factory=lambda: os.getenv(
+        "CLICKY_PORTAL_URL", "https://www.controlepopular.com.br"
+    ))
+    companheiro_token: Optional[str] = field(default_factory=lambda: os.getenv("COMPANHEIRO_TOKEN") or None)
     google_api_key: Optional[str] = field(default_factory=lambda: os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or None)
     ollama_host: str = field(default_factory=lambda: os.getenv("OLLAMA_HOST", "http://localhost:11434"))
     # Legacy single-model knob — still respected as a fallback for both slots
@@ -219,6 +228,13 @@ class Config:
         os.environ["CLICKY_BUDDY_ESCALA"] = str(escala)
         self._write_env("CLICKY_BUDDY_ESCALA", str(escala))
 
+    def set_portal_ativo(self, ativo: bool) -> None:
+        """Liga/desliga o modo portal: responder pelo Seu Nono do site."""
+        self.portal_ativo = bool(ativo)
+        valor = "1" if ativo else "0"
+        os.environ["CLICKY_PORTAL_ATIVO"] = valor
+        self._write_env("CLICKY_PORTAL_ATIVO", valor)
+
     def set_mic_mode(self, mode: str) -> None:
         """Persisted switch between hotkey-only and always-listening."""
         mode = "ambient" if mode == "ambient" else "hotkey"
@@ -258,6 +274,8 @@ class Config:
         override = os.environ.get("CLICKY_ACTIVE_LLM", "").strip().lower()
         if override in self.available_llm_providers():
             return override
+        if self.portal_ativo:
+            return "portal"
         if self.anthropic_api_key:
             return "claude"
         if self.openai_api_key:
@@ -279,6 +297,8 @@ class Config:
     def available_llm_providers(self) -> list[str]:
         """All providers the user can switch to right now."""
         out = []
+        if self.portal_ativo:
+            out.append("portal")
         if self.anthropic_api_key:
             out.append("claude")
         if self.openai_api_key:
@@ -333,6 +353,7 @@ class Config:
         "GOOGLE_API_KEY":     ("google_api_key",     "Google (Gemini)"),
         "AI_API_KEY_DEEPSEEK": ("deepseek_api_key",  "DeepSeek"),
         "AI_API_KEY_MARITACA": ("maritaca_api_key",  "Sabia (Maritaca)"),
+        "COMPANHEIRO_TOKEN":  ("companheiro_token",  "Controle Popular (token do companheiro)"),
         "ELEVENLABS_API_KEY": ("elevenlabs_api_key", "ElevenLabs (voice)"),
         "DEEPGRAM_API_KEY":   ("deepgram_api_key",   "Deepgram (speech-to-text)"),
         "TAVILY_API_KEY":     ("tavily_api_key",     "Tavily (web search)"),
