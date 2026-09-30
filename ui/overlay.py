@@ -46,6 +46,14 @@ TRI_ROTATION_DEG = -35.0
 # buddy azul original do Clicky). A arte esta em ui/preguica.py.
 TEMA_PREGUICA  = "preguica"
 TEMA_TRIANGULO = "triangulo"
+
+# Bicho ocioso: quando so segue o cursor (sem apontar, ouvir, pensar ou
+# desenhar), fica um pouco TRANSLUCIDO e menor, para nao cobrir os dados da
+# pagina. Na primeira acao ele volta ao normal, com transicao suave. O dono
+# pediu isso em 30/09/2026; os valores sao ajustaveis por ambiente
+# (CLICKY_BUDDY_OCIOSO_ALFA e CLICKY_BUDDY_OCIOSO_ESCALA).
+OCIOSO_ALFA_PADRAO   = 0.5    # 1.0 = opaco; 0.5 = metade
+OCIOSO_ESCALA_PADRAO = 0.82   # 1.0 = tamanho cheio
 # Cor dos galhos (pontos de apoio): madeira clara com contorno escuro, para
 # ler tanto sobre pagina clara quanto sobre janela escura.
 GALHO_COR       = QColor(0x8A, 0x74, 0x58)
@@ -239,6 +247,18 @@ class CursorOverlay(QWidget):
         self._trilha_rotulos: list[str] = []
         self._trilha_pos: int = -1
         self._tempo_bicho: float = 0.0
+
+        # Discrepancia ocioso/ativo do bicho. `_alfa_bicho` e
+        # `_escala_ociosa_atual` sao suavizados a cada quadro rumo ao alvo,
+        # para a mudanca nao "piscar".
+        self._alfa_ocioso: float = max(
+            0.2, min(1.0, getattr(cfg, "buddy_ocioso_alfa", OCIOSO_ALFA_PADRAO))
+        )
+        self._escala_ociosa: float = max(
+            0.5, min(1.0, getattr(cfg, "buddy_ocioso_escala", OCIOSO_ESCALA_PADRAO))
+        )
+        self._alfa_bicho: float = 1.0
+        self._escala_ociosa_atual: float = 1.0
 
         # Transparent click-through, covers all monitors
         self.setWindowFlags(
@@ -463,8 +483,41 @@ class CursorOverlay(QWidget):
         self._trilha_rotulos = []
         self._trilha_pos = -1
 
+    def _esta_ocioso(self) -> bool:
+        """True quando o bicho so segue o cursor, sem nenhuma acao em curso.
+
+        Ocioso e o estado em que ele nao ajuda a apontar nada: nem voando, nem
+        parado num alvo, nem ouvindo, pensando, falando ou desenhando. So aí
+        fica discreto, para nao cobrir os dados da pagina.
+        """
+        if self._flight_phase != _PHASE_FOLLOW:
+            return False
+        if self._mode in (MODE_LISTENING, MODE_THINKING, MODE_SPEAKING):
+            return False
+        if self._locked_pos is not None:
+            return False
+        if self._galhos:
+            return False
+        if self._last_tip is not None:
+            return False
+        return True
+
+    def _atualizar_discricao(self):
+        """Suaviza alfa e escala rumo ao estado ocioso (discreto) ou ativo.
+
+        Roda todo quadro, inclusive durante o voo, para o bicho voltar ao
+        tamanho cheio assim que comeca a apontar.
+        """
+        ocioso = self._esta_ocioso()
+        alvo_alfa = self._alfa_ocioso if ocioso else 1.0
+        alvo_escala = self._escala_ociosa if ocioso else 1.0
+        # ~0,12 por quadro a 60 FPS: a transicao leva ~0,3 s, sem "piscar".
+        self._alfa_bicho += (alvo_alfa - self._alfa_bicho) * 0.12
+        self._escala_ociosa_atual += (alvo_escala - self._escala_ociosa_atual) * 0.12
+
     def _tick(self):
         self._tempo_bicho += 0.016
+        self._atualizar_discricao()
         qp = QCursor.pos()
         real = QPointF(qp.x(), qp.y())
 
@@ -835,10 +888,14 @@ class CursorOverlay(QWidget):
             return
         # Pendurado num galho: desce um pouco para parecer agarrado nele.
         desloc_y = 12 if (self._galhos and not voando) else 0
+        # Ocioso, o bicho encolhe um pouco e fica translucido (ver
+        # `_atualizar_discricao`); ativo, volta ao tamanho e a opacidade cheios.
+        escala = self._flight_scale * self._escala_ociosa_atual
         p.save()
         p.translate(cx, cy + desloc_y)
         p.rotate(inclin)
-        p.scale(self._flight_scale, self._flight_scale)
+        p.scale(escala, escala)
+        p.setOpacity(self._alfa_bicho)
         p.drawPixmap(int(-pm.width() / 2), int(-pm.height() / 2), pm)
         p.restore()
 

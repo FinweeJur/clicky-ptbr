@@ -228,6 +228,26 @@ class Config:
         os.environ["CLICKY_BUDDY_ESCALA"] = str(escala)
         self._write_env("CLICKY_BUDDY_ESCALA", str(escala))
 
+    # Bicho discreto quando ocioso: enquanto so segue o cursor, sem apontar
+    # nada, ele fica translucido e um pouco menor, para nao cobrir os dados da
+    # pagina. Volta ao normal na primeira acao (apontar, ouvir, pensar, falar).
+    # Valores em 0..1: `alfa` = opacidade ociosa, `escala` = tamanho ocioso.
+    buddy_ocioso_alfa: float = field(default_factory=lambda: max(
+        0.2, min(1.0, float(os.getenv("CLICKY_BUDDY_OCIOSO_ALFA", "0.5") or 0.5))
+    ))
+    buddy_ocioso_escala: float = field(default_factory=lambda: max(
+        0.5, min(1.0, float(os.getenv("CLICKY_BUDDY_OCIOSO_ESCALA", "0.82") or 0.82))
+    ))
+
+    def set_buddy_ocioso(self, alfa: float, escala: float) -> None:
+        """Ajusta a discricao do bicho ocioso (0..1), gravando no .env."""
+        self.buddy_ocioso_alfa = max(0.2, min(1.0, float(alfa)))
+        self.buddy_ocioso_escala = max(0.5, min(1.0, float(escala)))
+        os.environ["CLICKY_BUDDY_OCIOSO_ALFA"] = f"{self.buddy_ocioso_alfa:.2f}"
+        os.environ["CLICKY_BUDDY_OCIOSO_ESCALA"] = f"{self.buddy_ocioso_escala:.2f}"
+        self._write_env("CLICKY_BUDDY_OCIOSO_ALFA", f"{self.buddy_ocioso_alfa:.2f}")
+        self._write_env("CLICKY_BUDDY_OCIOSO_ESCALA", f"{self.buddy_ocioso_escala:.2f}")
+
     def set_portal_ativo(self, ativo: bool) -> None:
         """Liga/desliga o modo portal: responder pelo Seu Nono do site."""
         self.portal_ativo = bool(ativo)
