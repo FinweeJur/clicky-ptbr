@@ -124,6 +124,13 @@ class Config:
         "CLICKY_PORTAL_URL", "https://www.controlepopular.com.br"
     ))
     companheiro_token: Optional[str] = field(default_factory=lambda: os.getenv("COMPANHEIRO_TOKEN") or None)
+    # Ponte local (sessao pareada): servidor SO no loopback que recebe, do
+    # navegador, as coordenadas dos alvos do Seu Nono (chips [n] e "Abrir
+    # pagina"). O portal abre a conexao; a pagina publica alcanca 127.0.0.1
+    # pelo preflight de Private Network Access.
+    ponte_porta: int = field(default_factory=lambda: max(
+        1024, min(65535, int(os.getenv("CLICKY_PONTE_PORTA", "8765") or 8765))
+    ))
     google_api_key: Optional[str] = field(default_factory=lambda: os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or None)
     ollama_host: str = field(default_factory=lambda: os.getenv("OLLAMA_HOST", "http://localhost:11434"))
     # Legacy single-model knob — still respected as a fallback for both slots

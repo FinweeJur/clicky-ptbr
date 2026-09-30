@@ -61,6 +61,7 @@ class TrayManager(QObject):
     on_set_custom_instructions = pyqtSignal(str)
     on_set_buddy_theme        = pyqtSignal(str)  # "preguica" | "triangulo"
     on_set_buddy_escala       = pyqtSignal(int)  # 1=36px, 2=72px, 3=108px
+    on_sessao_conectar        = pyqtSignal()     # conectar a uma sessao do Seu Nono do site
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -270,6 +271,10 @@ class TrayManager(QObject):
             acao.triggered.connect(
                 lambda _=False, e=escala: self._set_buddy_escala(e)
             )
+
+        bicho_menu.addSeparator()
+        sessao_action = bicho_menu.addAction("Conectar ao Seu Nono (site)...")
+        sessao_action.triggered.connect(self.on_sessao_conectar)
 
         # ── Journal ──
         menu.addSeparator()

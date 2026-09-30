@@ -267,6 +267,7 @@ class CompanionManager(QObject):
     sig_label               = pyqtSignal(float, float, str)
     sig_draw                = pyqtSignal(dict)            # generic teaching shape → overlay
     sig_clear_drawings      = pyqtSignal()                # wipe all teaching shapes
+    sig_definir_trilha      = pyqtSignal(list)            # trilha de galhos (x, y, rotulo) → overlay
     sig_recording_state     = pyqtSignal(bool, str)       # (is_recording, output_dir)
 
     def __init__(self):
@@ -341,6 +342,13 @@ class CompanionManager(QObject):
         self._collab: Optional[collab.CollabSession] = None
         self._workflow: Optional[workflow_capture.WorkflowCapture] = None
 
+        # Sessao pareada com o Seu Nono do site + ponte local. `_ponte` recebe
+        # as coordenadas dos alvos do site; `_sessao_task` ouve o SSE dos
+        # turnos. Ambos nascem desligados.
+        self._ponte = None
+        self._sessao_task: Optional[asyncio.Future] = None
+        self._sessao_id: Optional[str] = None
+
         # Load user-created skills from skills/ + ~/.clicky/skills/
         try:
             skills_pkg.load_all()
@@ -390,6 +398,14 @@ class CompanionManager(QObject):
         except Exception:
             pass
         self._listener.stop()
+        # Sessao pareada: encerra o ouvinte SSE e derruba a ponte local.
+        try:
+            self.desconectar_sessao()
+            if self._ponte is not None:
+                self._ponte.parar()
+        except Exception:
+            _log.debug("parando ponte/sessao falhou", exc_info=True)
+        self._ponte = None
         # Close the provider's HTTP pool while the loop is still alive —
         # once it stops, the coroutine can never run. Bounded so a hung
         # socket cannot delay quitting.
@@ -1109,6 +1125,99 @@ class CompanionManager(QObject):
         except Exception:
             pass
         self._emit_state(AppState.IDLE)
+
+    # ── Sessao pareada com o Seu Nono do site ────────────────────────────────
+
+    def conectar_sessao(self, codigo: str):
+        """Publico — pareia com a sessao do site e passa a ouvir os turnos.
+
+        Chamado pelo tray/menu depois que a pessoa le o codigo no widget do
+        Seu Nono. Sobe a ponte local e o ouvinte SSE numa task do loop.
+        """
+        codigo = (codigo or "").strip()
+        if not codigo:
+            self.sig_error.emit("Informe o codigo da sessao do Seu Nono.")
+            return
+        self.desconectar_sessao()
+        self._submit(self._conectar_sessao(codigo))
+
+    def desconectar_sessao(self):
+        """Encerra o ouvinte SSE da sessao atual (a ponte local fica de pe)."""
+        self._sessao_id = None
+        task = self._sessao_task
+        self._sessao_task = None
+        if task is not None and self._loop and self._loop.is_running():
+            self._loop.call_soon_threadsafe(task.cancel)
+
+    async def _conectar_sessao(self, codigo: str):
+        from ai.sessao_pareada import parear, ouvir
+        from ponte.servidor import PonteLocal
+
+        # 1. Ponte local (uma vez por execucao).
+        if self._ponte is None:
+            try:
+                self._ponte = PonteLocal(ao_pacote=self._registrar_pacote, porta=cfg.ponte_porta)
+                self._ponte.iniciar()
+            except Exception as e:
+                self._ponte = None
+                self.sig_error.emit(f"Ponte local indisponivel na porta {cfg.ponte_porta}: {e}")
+                return
+
+        # 2. Pareamento com o portal.
+        try:
+            dados = await parear(cfg.portal_url, codigo, cfg.companheiro_token)
+        except Exception as e:
+            self.sig_error.emit(f"Nao consegui parear com o site: {e}")
+            return
+
+        self._sessao_id = dados.get("id")
+        await self._reply_local("Bichinho conectado ao Seu Nono. Pode perguntar pelo microfone.")
+
+        # 3. Ouvinte SSE dos turnos.
+        try:
+            self._sessao_task = asyncio.ensure_future(
+                ouvir(cfg.portal_url, self._sessao_id, self._ao_evento_sessao, cfg.companheiro_token)
+            )
+        except Exception as e:
+            self.sig_error.emit(f"Falha ao ouvir a sessao: {e}")
+
+    def _registrar_pacote(self, pacote: dict):
+        """Ponto de extensao: o pacote cru fica em `self._ponte.ultimo`."""
+        return
+
+    def _ao_evento_sessao(self, evento: dict):
+        """Cada quadro do SSE. No `turno`, fala a resposta e caminha os galhos."""
+        if evento.get("tipo") != "turno":
+            return
+        resposta = (evento.get("dados") or {}).get("resposta") or {}
+        trilha = self._galhos_para_tela(resposta.get("galhos") or [])
+        if trilha:
+            self.sig_definir_trilha.emit(trilha)
+        fala = resposta.get("fala") or resposta.get("resposta") or ""
+        if fala:
+            self._submit(self._reply_local(fala))
+
+    def _galhos_para_tela(self, galhos: list) -> list:
+        """Converte os galhos do portal em pontos de tela para o bichinho.
+
+        Cada galho tem `indice` (o [n] da citacao) e `rotulo`. A coordenada
+        vem do ultimo pacote da ponte, casando pelo indice. Galho sem
+        coordenada conhecida e descartado — nunca se inventa posicao.
+        """
+        if self._ponte is None:
+            return []
+        pontos = []
+        for galho in galhos:
+            indice = galho.get("indice")
+            if indice is None:
+                continue
+            try:
+                xy = self._ponte.coordenadas_do_indice(int(indice))
+            except Exception:
+                xy = None
+            if xy:
+                pontos.append({"x": xy[0], "y": xy[1], "rotulo": galho.get("rotulo", "")})
+        return pontos
 
     async def _spaced_review(self):
         """SR-style review: pick due entries from the journal, ask one back."""

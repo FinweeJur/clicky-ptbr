@@ -176,6 +176,9 @@ def main():
     # Teaching drawings — generic shape channel with progressive animation
     manager.sig_draw.connect(overlay.add_shape)
     manager.sig_clear_drawings.connect(overlay.clear_annotations)
+    # Trilha de galhos do Seu Nono (sessao pareada): o bicho caminha pelos
+    # pontos de tela que a ponte local mapeou dos chips [n] do site.
+    manager.sig_definir_trilha.connect(overlay.definir_trilha)
 
     # Errors. The toast names the log file because it only has room for the
     # message itself — issue #15 was reported with no traceback simply because
@@ -271,6 +274,18 @@ def main():
         if ok and code:
             manager.collab_join(code.strip())
     tray.on_collab_join.connect(_collab_join)
+
+    # Sessao pareada com o Seu Nono do site: a pessoa le o codigo no widget do
+    # portal (botao "Conectar companheiro") e digita aqui.
+    def _sessao_conectar():
+        from PyQt6.QtWidgets import QInputDialog
+        codigo, ok = QInputDialog.getText(
+            None, "Conectar ao Seu Nono",
+            "Codigo mostrado no site (ex.: ABC-123):"
+        )
+        if ok and codigo.strip():
+            manager.conectar_sessao(codigo.strip())
+    tray.on_sessao_conectar.connect(_sessao_conectar)
 
     # Journal folder
     def _open_journal():
