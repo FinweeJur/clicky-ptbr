@@ -527,6 +527,11 @@ class CompanionManager(QObject):
             elif provider == "lmstudio":
                 from ai.lmstudio_provider import LMStudioProvider
                 self._llm = LMStudioProvider()
+            elif provider in ("deepseek", "maritaca"):
+                # Botoes simplificados: DeepSeek e Sabia (Maritaca), via
+                # provedor generico compativel com a API da OpenAI.
+                from ai.openai_compat_provider import OpenAICompatProvider
+                self._llm = OpenAICompatProvider(**cfg.provedores_openai_compat()[provider])
             else:
                 _ensure_ollama_running()
                 from ai.ollama_provider import OllamaProvider
