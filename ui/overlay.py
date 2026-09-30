@@ -20,8 +20,11 @@ from typing import Optional
 from PyQt6.QtWidgets import QWidget, QApplication
 from PyQt6.QtCore import Qt, QTimer, QPointF, QRectF
 from PyQt6.QtGui import (
-    QPainter, QColor, QPen, QBrush, QPainterPath, QCursor, QFont,
+    QPainter, QColor, QPen, QBrush, QPainterPath, QCursor, QFont, QPixmap,
 )
+
+from ui.preguica import Preguica
+from config import cfg
 
 
 MODE_IDLE      = "idle"
@@ -38,6 +41,15 @@ OFFSET_Y = 25
 TRI_SIZE = 16
 # Swift: .rotationEffect(.degrees(-35))
 TRI_ROTATION_DEG = -35.0
+
+# Bichinho: "preguica" (padrao do companheiro Seu Nono) ou "triangulo" (o
+# buddy azul original do Clicky). A arte esta em ui/preguica.py.
+TEMA_PREGUICA  = "preguica"
+TEMA_TRIANGULO = "triangulo"
+# Cor dos galhos (pontos de apoio): madeira clara com contorno escuro, para
+# ler tanto sobre pagina clara quanto sobre janela escura.
+GALHO_COR       = QColor(0x8A, 0x74, 0x58)
+GALHO_COR_CLARA = QColor(0xF2, 0xEC, 0xDD)
 
 # #3380FF
 CURSOR_BLUE = QColor(0x33, 0x80, 0xFF)
@@ -219,6 +231,15 @@ class CursorOverlay(QWidget):
         # Thinking spinner phase
         self._spin_phase: float = 0.0
 
+        # Bichinho e trilha de galhos (pontos de apoio vindos do RAG)
+        self._tema: str = getattr(cfg, "buddy_theme", TEMA_PREGUICA)
+        self._bicho = Preguica(escala=getattr(cfg, "buddy_escala", 2))
+        self._galhos: list[dict] = []
+        self._trilha: list[QPointF] = []
+        self._trilha_rotulos: list[str] = []
+        self._trilha_pos: int = -1
+        self._tempo_bicho: float = 0.0
+
         # Transparent click-through, covers all monitors
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
@@ -277,6 +298,40 @@ class CursorOverlay(QWidget):
     def set_slow_mode(self, enabled: bool):
         """Doubles flight + dwell duration so students can track the motion."""
         self._slow_mode = enabled
+
+    def set_tema_bichinho(self, tema: str):
+        """Troca o bicho entre a preguica (padrao) e o triangulo azul."""
+        self._tema = tema if tema in (TEMA_PREGUICA, TEMA_TRIANGULO) else TEMA_PREGUICA
+
+    def set_escala_bichinho(self, escala: int):
+        """Recria o bicho noutro tamanho. Escala inteira, para nao borrar."""
+        self._bicho = Preguica(escala=max(1, int(escala)))
+
+    def definir_trilha(self, galhos: list[dict]):
+        """Percorre uma trilha de galhos — os pontos de apoio do RAG.
+
+        `galhos` vem em ordem de citacao: cada item e
+        {"x", "y", "rotulo"}. O bicho balanca de galho em galho e para no
+        ultimo; a linha fina entre dois pontos e o galho de apoio.
+        """
+        self._galhos = [g for g in galhos if "x" in g and "y" in g]
+        self._trilha = [QPointF(g["x"], g["y"]) for g in self._galhos]
+        self._trilha_rotulos = [g.get("rotulo", "") for g in self._galhos]
+        self._trilha_pos = 0
+        if self._trilha:
+            self._pousar_no_galho(0)
+
+    def _pousar_no_galho(self, i: int):
+        """Faz o bicho saltar para o galho i, com balao e anel no ponto."""
+        alvo = self._trilha[i]
+        self._locked_pos = alvo
+        self._bubble_text = self._trilha_rotulos[i]
+        self._bubble_scale = 0.5
+        self._bubble_alpha = 0.0
+        self._ring = (alvo.x(), alvo.y(), 26.0)
+        self._ring_phase = 0.0
+        self._lock_timer.stop()
+        self._begin_flight(self._display_pos, alvo, _PHASE_FLYING)
 
     def set_point_hold(self, hold: bool):
         """Called by manager when TTS starts (True) / ends (False).
@@ -402,8 +457,14 @@ class CursorOverlay(QWidget):
         self._rotation_deg = TRI_ROTATION_DEG
         self._hold_dwell = False
         self._ring = None
+        # A trilha acabou: solta os galhos para a linha sumir.
+        self._galhos = []
+        self._trilha = []
+        self._trilha_rotulos = []
+        self._trilha_pos = -1
 
     def _tick(self):
+        self._tempo_bicho += 0.016
         qp = QCursor.pos()
         real = QPointF(qp.x(), qp.y())
 
@@ -458,10 +519,16 @@ class CursorOverlay(QWidget):
             # Stay planted on the element
             self._display_pos = QPointF(self._locked_pos.x(), self._locked_pos.y())
             if time.monotonic() >= self._dwell_until:
-                cursor_target = QPointF(real.x() + OFFSET_X, real.y() + OFFSET_Y)
-                self._begin_flight(self._display_pos, cursor_target, _PHASE_RETURNING)
-                # Fade bubble out during return
-                self._bubble_alpha = 0.0
+                # Ainda ha galho adiante? Balanca ate ele. So volta ao cursor
+                # quando a trilha acaba.
+                if self._trilha and 0 <= self._trilha_pos < len(self._trilha) - 1:
+                    self._trilha_pos += 1
+                    self._pousar_no_galho(self._trilha_pos)
+                else:
+                    cursor_target = QPointF(real.x() + OFFSET_X, real.y() + OFFSET_Y)
+                    self._begin_flight(self._display_pos, cursor_target, _PHASE_RETURNING)
+                    # Fade bubble out during return
+                    self._bubble_alpha = 0.0
             self._phase += 0.10
             self.update()
             return
@@ -523,6 +590,10 @@ class CursorOverlay(QWidget):
         if self._annotations:
             self._draw_annotations(p)
 
+        # Galhos (pontos de apoio) — tambem sob o bicho
+        if self._galhos:
+            self._draw_galhos(p)
+
         cx = self._display_pos.x() - self.x()
         cy = self._display_pos.y() - self.y()
 
@@ -530,6 +601,8 @@ class CursorOverlay(QWidget):
             self._draw_waveform(p, cx, cy)
         elif self._mode == MODE_THINKING:
             self._draw_spinner(p, cx, cy)
+        elif self._tema == TEMA_PREGUICA and self._bicho.disponivel:
+            self._draw_preguica(p, cx, cy)
         else:
             # idle, speaking, pointing
             self._draw_triangle(p, cx, cy)
@@ -715,6 +788,59 @@ class CursorOverlay(QWidget):
             p.setBrush(QBrush(g))
             p.setPen(Qt.PenStyle.NoPen)
             p.drawEllipse(QPointF(cx, cy), radius * r_mul, radius * r_mul)
+
+    def _draw_galhos(self, p):
+        """Desenha os galhos: linha fina ligando os pontos de apoio do RAG.
+
+        Um "galho" e um pedaco real do dado do portal (titulo de fonte, rota
+        do catalogo). A linha escura por baixo mantem o galho visivel sobre
+        fundo claro; a madeira por cima mantem sobre fundo escuro.
+        """
+        pontos = [(g["x"] - self.x(), g["y"] - self.y()) for g in self._galhos]
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        for a, b in zip(pontos, pontos[1:]):
+            escuro = QColor(0x24, 0x1C, 0x14)
+            escuro.setAlpha(150)
+            p.setPen(QPen(escuro, 3.5, Qt.PenStyle.SolidLine,
+                          Qt.PenCapStyle.RoundCap))
+            p.drawLine(QPointF(*a), QPointF(*b))
+            p.setPen(QPen(GALHO_COR, 2.0, Qt.PenStyle.SolidLine,
+                          Qt.PenCapStyle.RoundCap))
+            p.drawLine(QPointF(*a), QPointF(*b))
+
+        # Rotulo de cada galho: o titulo da fonte, ancorado logo acima.
+        f = QFont("Segoe UI", 9, QFont.Weight.Medium)
+        p.setFont(f)
+        for g, pt in zip(self._galhos, pontos):
+            rotulo = g.get("rotulo", "")
+            if rotulo:
+                self._outlined_text(p, pt[0] + 8, pt[1] - 6, rotulo,
+                                    GALHO_COR_CLARA, 1.0)
+
+    def _draw_preguica(self, p, cx, cy):
+        """O bicho-preguica pendurado, com o balanco do trajeto."""
+        voando = self._flight_phase in (_PHASE_FLYING, _PHASE_RETURNING)
+        if voando:
+            u = min(1.0, (time.monotonic() - self._fly_t0)
+                    / max(0.001, self._fly_duration))
+            pm = self._bicho.quadro_em_voo(u)
+            inclin = self._bicho.inclinacao(u, voando=True)
+        elif self._flight_phase == _PHASE_DWELLING:
+            pm = self._bicho.quadro("chega")
+            inclin = self._bicho.inclinacao(self._tempo_bicho * 0.4, voando=False)
+        else:
+            pm = self._bicho.quadro_parado(self._tempo_bicho)
+            inclin = self._bicho.inclinacao(self._tempo_bicho * 0.4, voando=False)
+        if pm is None:
+            return
+        # Pendurado num galho: desce um pouco para parecer agarrado nele.
+        desloc_y = 12 if (self._galhos and not voando) else 0
+        p.save()
+        p.translate(cx, cy + desloc_y)
+        p.rotate(inclin)
+        p.scale(self._flight_scale, self._flight_scale)
+        p.drawPixmap(int(-pm.width() / 2), int(-pm.height() / 2), pm)
+        p.restore()
 
     def _draw_triangle(self, p, cx, cy):
         """Flat blue equilateral triangle, rotated -35° → cursor-like tilt."""

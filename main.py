@@ -215,6 +215,15 @@ def main():
     tray.on_toggle_journal.connect(manager.set_journal)
     tray.on_toggle_ocr.connect(manager.set_ocr_enabled)
 
+    # Bichinho (preguica/triangulo e tamanho): aplica o que ficou salvo no .env
+    # e escuta as mudancas do menu do tray.
+    overlay.set_tema_bichinho(cfg.buddy_theme)
+    overlay.set_escala_bichinho(cfg.buddy_escala)
+    tray.on_set_buddy_theme.connect(overlay.set_tema_bichinho)
+    tray.on_set_buddy_escala.connect(overlay.set_escala_bichinho)
+    tray.on_set_buddy_theme.connect(cfg.set_buddy_theme)
+    tray.on_set_buddy_escala.connect(cfg.set_buddy_escala)
+
     # Lesson recording
     def _record_start():
         out = manager.start_recording()

@@ -59,6 +59,8 @@ class TrayManager(QObject):
     on_set_response_language = pyqtSignal(str)  # "" = auto-detect, else ISO code
     on_set_stt_language      = pyqtSignal(str)  # "" = auto-detect, else ISO code
     on_set_custom_instructions = pyqtSignal(str)
+    on_set_buddy_theme        = pyqtSignal(str)  # "preguica" | "triangulo"
+    on_set_buddy_escala       = pyqtSignal(int)  # 1=36px, 2=72px, 3=108px
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -94,6 +96,9 @@ class TrayManager(QObject):
         self._journal_enabled = True
         self._ocr_enabled = True
         self._is_recording = False
+        # Bichinho: preguica (padrao) ou triangulo azul, e o tamanho.
+        self._buddy_theme = cfg.buddy_theme
+        self._buddy_escala = cfg.buddy_escala
 
         # Ollama model state — populated by manager via set_ollama_models()
         self._ollama_installed: dict[str, list[str]] = {"vision": [], "text": []}
@@ -130,10 +135,21 @@ class TrayManager(QObject):
         menu.addSeparator()
 
         # Model switcher submenu
-        switch_menu = menu.addMenu(f"Model: {providers['llm']}")
+        rotulos_ia = {
+            "claude": "Claude (Anthropic)",
+            "openai": "OpenAI (GPT)",
+            "copilot": "GitHub Copilot",
+            "gemini": "Gemini (Google)",
+            "deepseek": "DeepSeek",
+            "maritaca": "Sabia (Maritaca)",
+            "ollama": "Ollama (local)",
+            "lmstudio": "LM Studio (local)",
+        }
+        switch_menu = menu.addMenu(f"Model: {rotulos_ia.get(providers['llm'], providers['llm'])}")
         active = providers['llm']
         for name in cfg.available_llm_providers():
-            label = f"● {name}" if name == active else f"  {name}"
+            nome = rotulos_ia.get(name, name)
+            label = f"● {nome}" if name == active else f"    {nome}"
             act = switch_menu.addAction(label)
             act.triggered.connect(lambda _=False, n=name: self.on_switch_provider.emit(n))
         switch_menu.addSeparator()
@@ -223,6 +239,36 @@ class TrayManager(QObject):
         ocr_action.setChecked(self._ocr_enabled)
         ocr_action.triggered.connect(self._toggle_ocr)
         self._ocr_action = ocr_action
+
+        # ── Bichinho (o que segue o cursor) ──
+        menu.addSeparator()
+        bicho_menu = menu.addMenu(
+            "Bichinho: Preguica" if self._buddy_theme == "preguica"
+            else "Bichinho: Triangulo"
+        )
+
+        preg = bicho_menu.addAction("Preguica (padrao)")
+        preg.setCheckable(True)
+        preg.setChecked(self._buddy_theme == "preguica")
+        preg.triggered.connect(lambda: self._set_buddy_theme("preguica"))
+        self._buddy_preg_action = preg
+
+        tri = bicho_menu.addAction("Triangulo azul (original)")
+        tri.setCheckable(True)
+        tri.setChecked(self._buddy_theme == "triangulo")
+        tri.triggered.connect(lambda: self._set_buddy_theme("triangulo"))
+        self._buddy_tri_action = tri
+
+        tam_menu = bicho_menu.addMenu("Tamanho")
+        for escala, rotulo in ((1, "Pequeno (36 px)"),
+                               (2, "Medio (72 px)"),
+                               (3, "Grande (108 px)")):
+            acao = tam_menu.addAction(rotulo)
+            acao.setCheckable(True)
+            acao.setChecked(self._buddy_escala == escala)
+            acao.triggered.connect(
+                lambda _=False, e=escala: self._set_buddy_escala(e)
+            )
 
         # ── Journal ──
         menu.addSeparator()
@@ -530,6 +576,18 @@ class TrayManager(QObject):
             else "Slow Mode (teacher pace): OFF"
         )
         self.on_toggle_slow_mode.emit(checked)
+
+    def _set_buddy_theme(self, tema: str):
+        """Troca o bichinho entre preguica e triangulo, e avisa o app."""
+        self._buddy_theme = "triangulo" if tema == "triangulo" else "preguica"
+        self._buddy_preg_action.setChecked(self._buddy_theme == "preguica")
+        self._buddy_tri_action.setChecked(self._buddy_theme == "triangulo")
+        self.on_set_buddy_theme.emit(self._buddy_theme)
+
+    def _set_buddy_escala(self, escala: int):
+        """Troca o tamanho do bichinho (1 a 3)."""
+        self._buddy_escala = max(1, min(3, int(escala)))
+        self.on_set_buddy_escala.emit(self._buddy_escala)
 
     def _toggle_quiz(self, checked: bool):
         self._quiz_enabled = checked

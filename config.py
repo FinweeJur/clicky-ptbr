@@ -106,6 +106,15 @@ class Config:
     # Alibaba DashScope/Qwen, SiliconFlow, OpenRouter...). Empty = real OpenAI.
     openai_base_url: str = field(default_factory=lambda: os.getenv("OPENAI_BASE_URL", "").strip())
     openai_default_model: str = field(default_factory=lambda: os.getenv("OPENAI_DEFAULT_MODEL", "").strip())
+    # Botoes simplificados do companheiro Seu Nono: DeepSeek e Sabia (Maritaca).
+    # Os dois usam o mesmo provedor generico (ai/openai_compat_provider.py).
+    # As chaves seguem o mesmo nome usado no portal Controle Popular.
+    deepseek_api_key: Optional[str] = field(default_factory=lambda: os.getenv("AI_API_KEY_DEEPSEEK") or None)
+    deepseek_base_url: str = field(default_factory=lambda: os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"))
+    deepseek_model: str = field(default_factory=lambda: os.getenv("DEEPSEEK_MODEL", "deepseek-chat"))
+    maritaca_api_key: Optional[str] = field(default_factory=lambda: os.getenv("AI_API_KEY_MARITACA") or None)
+    maritaca_base_url: str = field(default_factory=lambda: os.getenv("MARITACA_BASE_URL", "https://chat.maritaca.ai/api"))
+    maritaca_model: str = field(default_factory=lambda: os.getenv("MARITACA_MODEL", "sabiazinho-4"))
     google_api_key: Optional[str] = field(default_factory=lambda: os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or None)
     ollama_host: str = field(default_factory=lambda: os.getenv("OLLAMA_HOST", "http://localhost:11434"))
     # Legacy single-model knob — still respected as a fallback for both slots
@@ -184,12 +193,62 @@ class Config:
         """True when the mic should stay open and scan for the wake word."""
         return self.mic_mode == "ambient"
 
+    # Bichinho que segue o cursor. "preguica" (padrao) e o bicho-preguica do
+    # companheiro Seu Nono; "triangulo" e o buddy azul original do Clicky.
+    buddy_theme: str = field(default_factory=lambda: (
+        os.getenv("CLICKY_BUDDY_THEME", "preguica").strip().lower() or "preguica"
+    ))
+
+    def set_buddy_theme(self, tema: str) -> None:
+        """Troca o bichinho entre preguica e triangulo, gravando no .env."""
+        tema = "triangulo" if tema == "triangulo" else "preguica"
+        self.buddy_theme = tema
+        os.environ["CLICKY_BUDDY_THEME"] = tema
+        self._write_env("CLICKY_BUDDY_THEME", tema)
+
+    # Tamanho do bicho: 1 = 36 px, 2 = 72 px (padrao), 3 = 108 px. Escala
+    # inteira para o pixel art nao borrar.
+    buddy_escala: int = field(default_factory=lambda: max(
+        1, min(6, int(os.getenv("CLICKY_BUDDY_ESCALA", "2") or 2))
+    ))
+
+    def set_buddy_escala(self, escala: int) -> None:
+        """Define o tamanho do bicho (1 a 6), gravando no .env."""
+        escala = max(1, min(6, int(escala)))
+        self.buddy_escala = escala
+        os.environ["CLICKY_BUDDY_ESCALA"] = str(escala)
+        self._write_env("CLICKY_BUDDY_ESCALA", str(escala))
+
     def set_mic_mode(self, mode: str) -> None:
         """Persisted switch between hotkey-only and always-listening."""
         mode = "ambient" if mode == "ambient" else "hotkey"
         self.mic_mode = mode
         os.environ["CLICKY_MIC_MODE"] = mode
         self._write_env("CLICKY_MIC_MODE", mode)
+
+    def provedores_openai_compat(self) -> dict[str, dict]:
+        """Presets dos botoes simplificados (DeepSeek e Sabia/Maritaca).
+
+        Devolve, por id, os argumentos que o `OpenAICompatProvider` espera.
+        `aceita_imagem` fica False nos dois: o chat do DeepSeek e o Sabiazinho
+        respondem por texto — mandar imagem daria erro.
+        """
+        return {
+            "deepseek": {
+                "rotulo": "DeepSeek",
+                "base_url": self.deepseek_base_url,
+                "api_key": self.deepseek_api_key or "",
+                "modelo": self.deepseek_model,
+                "aceita_imagem": False,
+            },
+            "maritaca": {
+                "rotulo": "Sabia (Maritaca)",
+                "base_url": self.maritaca_base_url,
+                "api_key": self.maritaca_api_key or "",
+                "modelo": self.maritaca_model,
+                "aceita_imagem": False,
+            },
+        }
 
     def llm_provider(self) -> str:
         """Returns the active LLM provider (runtime override > priority chain).
@@ -211,6 +270,10 @@ class Config:
             pass
         if self.google_api_key:
             return "gemini"
+        if self.deepseek_api_key:
+            return "deepseek"
+        if self.maritaca_api_key:
+            return "maritaca"
         return "ollama"
 
     def available_llm_providers(self) -> list[str]:
@@ -228,6 +291,10 @@ class Config:
             pass
         if self.google_api_key:
             out.append("gemini")
+        if self.deepseek_api_key:
+            out.append("deepseek")
+        if self.maritaca_api_key:
+            out.append("maritaca")
         out.append("ollama")     # always available if the daemon is running
         out.append("lmstudio")   # always available if the local server is running
         return out
@@ -264,6 +331,8 @@ class Config:
         "ANTHROPIC_API_KEY":  ("anthropic_api_key",  "Anthropic (Claude)"),
         "OPENAI_API_KEY":     ("openai_api_key",     "OpenAI (GPT)"),
         "GOOGLE_API_KEY":     ("google_api_key",     "Google (Gemini)"),
+        "AI_API_KEY_DEEPSEEK": ("deepseek_api_key",  "DeepSeek"),
+        "AI_API_KEY_MARITACA": ("maritaca_api_key",  "Sabia (Maritaca)"),
         "ELEVENLABS_API_KEY": ("elevenlabs_api_key", "ElevenLabs (voice)"),
         "DEEPGRAM_API_KEY":   ("deepgram_api_key",   "Deepgram (speech-to-text)"),
         "TAVILY_API_KEY":     ("tavily_api_key",     "Tavily (web search)"),
