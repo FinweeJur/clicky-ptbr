@@ -354,7 +354,7 @@ class CursorOverlay(QWidget):
                 "mascote": m,
                 "pos": QPointF(
                     random.uniform(120, max(220, self.width() - 120)),
-                    random.uniform(120, max(220, self.height() - 120)),
+                    self._piso_y(),
                 ),
                 "vel": QPointF(0, 0),
                 "alvo": None,
@@ -506,8 +506,12 @@ class CursorOverlay(QWidget):
         geo.setBottom(geo.bottom() - 2)
         self.setGeometry(geo)
 
+    def _piso_y(self) -> float:
+        """Linha do piso (base da tela) onde os mascotes andam."""
+        return max(60.0, self.height() - 12.0)
+
     def _tick_extras(self):
-        """Move os mascotes 2 e 3: cada um passeia para um alvo proprio."""
+        """Move os mascotes extras: cada um anda no piso para um alvo proprio."""
         if not self._mascotes_extra:
             return
         agora = time.monotonic()
@@ -515,7 +519,7 @@ class CursorOverlay(QWidget):
             if it["alvo"] is None or agora >= it["prox"]:
                 it["alvo"] = QPointF(
                     random.uniform(80, max(200, self.width() - 80)),
-                    random.uniform(80, max(200, self.height() - 80)),
+                    self._piso_y(),
                 )
                 it["prox"] = agora + random.uniform(3.0, 6.0)
             ax = (it["alvo"].x() - it["pos"].x()) * 0.05
@@ -663,22 +667,18 @@ class CursorOverlay(QWidget):
             self.update()
             return
 
-        # ── Normal cursor-follow spring ──
-        # Roam: ocioso e solto, o mascote passeia sozinho pela tela (chega aos
-        # locais sozinho). Qualquer atividade do agente assume o controle.
-        if self._roam and self._mode == MODE_IDLE and not self._galhos:
-            agora = time.monotonic()
-            if self._roam_alvo is None or agora >= self._roam_prox:
-                self._roam_alvo = QPointF(
-                    random.uniform(80, max(160, self.width() - 80)),
-                    random.uniform(80, max(160, self.height() - 80)),
-                )
-                self._roam_prox = agora + random.uniform(2.5, 5.0)
-            target = QPointF(self.x() + self._roam_alvo.x(),
-                             self.y() + self._roam_alvo.y())
-        else:
-            target = QPointF(real.x() + OFFSET_X, real.y() + OFFSET_Y)
-        stiffness, damping = 0.28, 0.62
+        # ── Piso inferior: os mascotes andam na base da tela ──
+        # Nao seguem mais o cursor: passeiam devagar pela linha do piso. O
+        # voo (galhos) continua sobrescrevendo quando ha o que apontar.
+        agora = time.monotonic()
+        if self._roam_alvo is None or agora >= self._roam_prox:
+            self._roam_alvo = QPointF(
+                random.uniform(80, max(160, self.width() - 80)), 0.0,
+            )
+            self._roam_prox = agora + random.uniform(2.5, 5.0)
+        target = QPointF(self.x() + self._roam_alvo.x(),
+                         self.y() + self._piso_y())
+        stiffness, damping = 0.16, 0.80
 
         # Spring
         ax = (target.x() - self._display_pos.x()) * stiffness
@@ -952,8 +952,8 @@ class CursorOverlay(QWidget):
             return "running-right" if dx >= 0 else "running-left"
         if self._flight_phase == _PHASE_DWELLING:
             return "jumping"
-        # Passeando: corre para o lado em que anda.
-        if self._roam and self._mode == MODE_IDLE and not self._galhos and abs(self._vel.x()) > 0.4:
+        # Andando no piso: corre para o lado em que anda.
+        if self._mode == MODE_IDLE and not self._galhos and abs(self._vel.x()) > 0.4:
             return "running-right" if self._vel.x() >= 0 else "running-left"
         return {
             MODE_LISTENING: "review",
@@ -967,11 +967,12 @@ class CursorOverlay(QWidget):
         pm = self._mascote.quadro_em(self._estado_mascote(voando), self._tempo_bicho)
         if pm is None:
             return
-        desloc_y = 6 if (self._galhos and not voando) else 0
+        desloc_y = 0
         p.save()
         p.translate(cx, cy + desloc_y)
         p.scale(self._flight_scale, self._flight_scale)
-        p.drawPixmap(int(-pm.width() / 2), int(-pm.height() / 2), pm)
+        # Base apoiada no ponto (o bicho "pisa" no piso).
+        p.drawPixmap(int(-pm.width() / 2), int(-pm.height()), pm)
         p.restore()
 
     def _estado_extra(self, vel) -> str:
@@ -991,7 +992,7 @@ class CursorOverlay(QWidget):
             cy = it["pos"].y() - self.y()
             pm = it["mascote"].quadro_em(self._estado_extra(it["vel"]), self._tempo_bicho)
             if pm is not None:
-                p.drawPixmap(int(cx - pm.width() / 2), int(cy - pm.height() / 2), pm)
+                p.drawPixmap(int(cx - pm.width() / 2), int(cy - pm.height()), pm)
 
     def _draw_preguica(self, p, cx, cy):
         """O bicho-preguica pendurado, com o balanco do trajeto."""
