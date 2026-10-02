@@ -1,64 +1,53 @@
-# Referências — arte do bicho-preguiça
+# Referências — arte do bicho-preguiça (estilo cartoon)
 
-Este documento registra de onde vieram a forma e a cor do bichinho do
-companheiro Seu Nonô, e qual critério diz que o desenho "parece o bastante".
+Registra de onde veio a forma e a cor do bichinho do companheiro Seu Nonô, o
+critério de similaridade e a ressalva de uso.
 
-## Espécie
+## Estilo atual: cartoon
 
-**Bicho-preguiça-de-garganta-marrom** (*Bradypus variegatus*), a preguiça
-mais comum no Brasil. É a de três dedos, maior e de movimento ainda mais
-lento que a de dois dedos.
+A primeira versão era realista (baseada em foto). A pedido do dono, a arte
+passou ao estilo **cartoon**: corpo redondo pendurado de cabeça para baixo num
+galho com folhas, rosto creme e contorno escuro.
 
-## Anatomia usada no desenho
+## Referência
 
-Dados de [Sloth — Wikipedia](https://en.wikipedia.org/wiki/Sloth), acesso em
-30/09/2026:
+Imagem cartoon enviada pelo dono (origem Pinterest), analisada **apenas para
+traçar forma e cor**. O arquivo **não** é versionado aqui; fica em
+`CLICKY_REF_DIR` (padrão: `C:\Users\teste\AppData\Local\Temp\opencode\preguica-ref`).
 
-- Corpo de 60 a 80 cm; membros longos; cabeça arredondada com orelhas
-  mínimas.
-- Nos três dedos, os **braços são cerca de 50% mais longos que as pernas** —
-  por isso o desenho tem braços longos e pernas curtas.
-- Garras **longas e curvas**, usadas para pendurar-se. No desenho, três
-  garras por mão.
-- Pelagem farta que hospeda **algas verdes simbióticas**, o que dá o tom
-  esverdeado e a camuflagem.
-- Movimento lento e deliberado — é o que dá o ritmo do bichinho no app.
+⚠️ **Ressalva de uso:** a forma do desenho deriva dessa referência de terceiro.
+Para uso comercial ou redistribuição, trocar por um desenho próprio ou obter
+licença. A arte é gerada por código em `assets/make_preguica.py`.
 
-## Fotos analisadas (cor e silhueta)
+## Onde a imagem-fonte aparece (só no repositório, no doc)
 
-Imagens do Wikimedia Commons, usadas **somente para amostragem de cor e de
-proporção**. Nenhuma é redistribuída neste repositório; a arte é original,
-desenhada por código em `assets/make_preguica.py`.
+- `ref_brave.jpg` — imagem cartoon do bichinho (Pinterest, via Brave).
 
-| Arquivo de análise | Obra | Autor | Licença | Fonte |
-|---|---|---|---|---|
-| `ref1_bradypus.jpg` | *Bicho-preguiça 3* (*Bradypus variegatus*) | — | Wikimedia Commons | [Special:FilePath](https://commons.wikimedia.org/wiki/Special:FilePath/Bicho-pregui%C3%A7a_3.jpg) |
-| `ref2_alimentando.jpg` | *MC Drei-Finger-Faultier* | — | Wikimedia Commons | [Special:FilePath](https://commons.wikimedia.org/wiki/Special:FilePath/MC_Drei-Finger-Faultier.jpg) |
-| `ref3_choloepus.jpg` | *Choloepus hoffmanni* (Puerto Viejo, CR) | — | Wikimedia Commons | [Special:FilePath](https://commons.wikimedia.org/wiki/Special:FilePath/Choloepus_hoffmanni_(Puerto_Viejo,_CR)_crop.jpg) |
-| `ref4_atravessando.jpg` | *Three-toed sloth crossing road in Costa Rica* | — | Wikimedia Commons | [Special:FilePath](https://commons.wikimedia.org/wiki/Special:FilePath/Three-toed_sloth_crossing_road_in_Costa_Rica.jpg) |
+## Como a forma foi capturada
 
-Para reanalisar as cores de qualquer foto:
+`assets/make_preguica.py` traz a **grade de 36×29** já traçada da referência,
+EMBUTIDA no código (`BASE`), então a arte sai sem depender da imagem. A paleta
+de 15 tons foi amostrada da própria referência.
 
-```bash
-CLICKY_REF_DIR=<pasta-das-fotos> python assets/make_preguica.py --check --contato folha.png
-```
+## Critério de similaridade (medido: 98,7%)
 
-## Critério de similaridade
+`python assets/make_preguica.py --check` mede, contra a referência:
 
-`assets/make_preguica.py --check` mede e exige:
+- **IoU da silhueta** — nossa forma x a da referência;
+- **similaridade de cor** — 1 − erro médio de cor (distância redmean).
 
-1. **Paleta** — toda cor usada fica a no máximo ΔE 22 do tom mais próximo da
-   paleta amostrada das fotos.
-2. **Proporção** — braços ≥ 45% da altura; cabeça entre 40% e 70% da largura
-   do corpo.
-3. **Leitura** — ao menos 3 faixas de valor de luminância; face clara ≥ 5%
-   dos pixels visíveis.
-4. **Contraste** — contorno escuro contra fundo claro **e** aro claro contra
-   fundo escuro, ambos ≥ 40 de diferença de luminância. É a borda dupla que
-   mantém o bichinho visível sobre qualquer janela.
+E exige **composto = 0,5·IoU + 0,5·cor ≥ 0,95**.
 
-## Paleta final
+Medição de 30/09/2026: **IoU 1,00 · cor 0,973 · composto 0,987**.
 
-Ver `assets/preguica/paleta.json`. Tons principais: pelagem escura `#3E3025`,
-média `#6D5A43`, clara `#A79878`; face `#F0E8D8`; máscara `#2A2017`; alga
-`#6E8F4C`; garra `#C9BFA8`; contorno `#241C14`; aro `#F2ECDD`.
+## Movimento (movimento dos pixels)
+
+Os seis quadros saem do mesmo desenho por operações de pixel: `alcanca` e
+`puxa` deslizam o corpo para os lados (balanço), `chega` desce o bicho e
+`dorme` fecha os olhos e desce. O overlay do app soma a isso o voo em arco
+para alcançar os locais (`ui/overlay.py`).
+
+## Paleta
+
+Ver `assets/preguica/paleta.json`. Tons principais: corpo `#D7A270`, sombra
+`#B5785A`, contorno vinho `#5A0E2B`, pelo claro/face `#EDD4AA`, folha `#84C574`.
