@@ -262,6 +262,35 @@ class Config:
         os.environ["CLICKY_PORTAL_ATIVO"] = valor
         self._write_env("CLICKY_PORTAL_ATIVO", valor)
 
+    # Mascote animado (padrao Petdex). Vazio = primeiro instalado. A escala e
+    # um float sobre os pixels nativos (192x208); ~0.35 deixa o bicho pequeno.
+    mascote_slug: str = field(default_factory=lambda: os.getenv("CLICKY_MASCOTE_SLUG", "").strip())
+    mascote_escala: float = field(default_factory=lambda: float(os.getenv("CLICKY_MASCOTE_ESCALA", "0.35") or 0.35))
+    # Roam: quando ligado, o bicho passeia sozinho pela tela enquanto ocioso.
+    mascote_roam: bool = field(default_factory=lambda: os.getenv(
+        "CLICKY_MASCOTE_ROAM", "0"
+    ).strip().lower() in ("1", "true", "sim", "yes", "on"))
+
+    def set_mascote_slug(self, slug: str) -> None:
+        """Define o mascote ativo, gravando no .env."""
+        self.mascote_slug = (slug or "").strip()
+        os.environ["CLICKY_MASCOTE_SLUG"] = self.mascote_slug
+        self._write_env("CLICKY_MASCOTE_SLUG", self.mascote_slug)
+
+    def set_mascote_escala(self, escala: float) -> None:
+        """Define o tamanho do mascote (0.1 a 3.0), gravando no .env."""
+        escala = max(0.1, min(3.0, float(escala)))
+        self.mascote_escala = escala
+        os.environ["CLICKY_MASCOTE_ESCALA"] = str(escala)
+        self._write_env("CLICKY_MASCOTE_ESCALA", str(escala))
+
+    def set_mascote_roam(self, on: bool) -> None:
+        """Liga/desliga o passeio autonomo do mascote, gravando no .env."""
+        self.mascote_roam = bool(on)
+        valor = "1" if on else "0"
+        os.environ["CLICKY_MASCOTE_ROAM"] = valor
+        self._write_env("CLICKY_MASCOTE_ROAM", valor)
+
     def set_mic_mode(self, mode: str) -> None:
         """Persisted switch between hotkey-only and always-listening."""
         mode = "ambient" if mode == "ambient" else "hotkey"

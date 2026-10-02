@@ -61,6 +61,10 @@ class TrayManager(QObject):
     on_set_custom_instructions = pyqtSignal(str)
     on_set_buddy_theme        = pyqtSignal(str)  # "preguica" | "triangulo"
     on_set_buddy_escala       = pyqtSignal(int)  # 1=36px, 2=72px, 3=108px
+    on_set_mascote            = pyqtSignal(str)  # slug do mascote (Petdex)
+    on_mascote_escala         = pyqtSignal(float)  # 0.1 a 3.0
+    on_toggle_mascote_roam    = pyqtSignal(bool)
+    on_instalar_mascote       = pyqtSignal()      # abre a busca no Petdex
     on_sessao_conectar        = pyqtSignal()     # conectar a uma sessao do Seu Nono do site
 
     def __init__(self, parent=None):
@@ -100,6 +104,10 @@ class TrayManager(QObject):
         # Bichinho: preguica (padrao) ou triangulo azul, e o tamanho.
         self._buddy_theme = cfg.buddy_theme
         self._buddy_escala = cfg.buddy_escala
+        # Mascote animado (Petdex).
+        self._mascote_slug = cfg.mascote_slug
+        self._mascote_escala = cfg.mascote_escala
+        self._mascote_roam = cfg.mascote_roam
 
         # Ollama model state — populated by manager via set_ollama_models()
         self._ollama_installed: dict[str, list[str]] = {"vision": [], "text": []}
@@ -275,6 +283,10 @@ class TrayManager(QObject):
         bicho_menu.addSeparator()
         sessao_action = bicho_menu.addAction("Conectar ao Seu Nono (site)...")
         sessao_action.triggered.connect(self.on_sessao_conectar)
+
+        # ── Mascote animado (Petdex) ──
+        menu.addSeparator()
+        self._build_mascote_submenu(menu)
 
         # ── Journal ──
         menu.addSeparator()
@@ -582,6 +594,36 @@ class TrayManager(QObject):
             else "Slow Mode (teacher pace): OFF"
         )
         self.on_toggle_slow_mode.emit(checked)
+
+    def _build_mascote_submenu(self, menu: QMenu):
+        """Galeria de mascotes animados (Petdex): instalados, buscar, tamanho, roam."""
+        from mascotes import petdex
+        instalados = petdex.listar_instalados()
+        ativo = self._mascote_slug or (instalados[0] if instalados else "")
+
+        m = menu.addMenu("Mascote animado (Petdex)")
+        if not instalados:
+            vazio = m.addAction("Nenhum instalado")
+            vazio.setEnabled(False)
+        for slug in instalados:
+            acao = m.addAction(("● " if slug == ativo else "    ") + slug)
+            acao.triggered.connect(lambda _=False, s=slug: self.on_set_mascote.emit(s))
+
+        m.addSeparator()
+        inst = m.addAction("Buscar e instalar no Petdex...")
+        inst.triggered.connect(self.on_instalar_mascote)
+
+        tam = m.addMenu("Tamanho")
+        for esc in (0.2, 0.35, 0.5, 0.7, 1.0):
+            a = tam.addAction(f"{int(esc * 192)} px de largura")
+            a.setCheckable(True)
+            a.setChecked(abs(self._mascote_escala - esc) < 0.001)
+            a.triggered.connect(lambda _=False, e=esc: self.on_mascote_escala.emit(e))
+
+        roam = m.addAction("Passear sozinho (roam)")
+        roam.setCheckable(True)
+        roam.setChecked(self._mascote_roam)
+        roam.triggered.connect(lambda c: self.on_toggle_mascote_roam.emit(c))
 
     def _set_buddy_theme(self, tema: str):
         """Troca o bichinho entre preguica e triangulo, e avisa o app."""

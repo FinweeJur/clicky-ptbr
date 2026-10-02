@@ -31,3 +31,6 @@ github_token.json
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+# Mascotes baixados do Petdex (nao versionar a arte de terceiros)
+mascotes/instalados/

@@ -227,6 +227,59 @@ def main():
     tray.on_set_buddy_theme.connect(cfg.set_buddy_theme)
     tray.on_set_buddy_escala.connect(cfg.set_buddy_escala)
 
+    # Mascote animado (Petdex): aplica o salvo, recarrega ao trocar e instala
+    # pela busca no registro publico.
+    def _recarregar_mascote():
+        from ui.mascote import carregar_ativo
+        overlay.set_mascote(carregar_ativo(cfg))
+
+    def _escolher_mascote(slug: str):
+        cfg.set_mascote_slug(slug)
+        _recarregar_mascote()
+
+    def _mascote_escala(escala: float):
+        cfg.set_mascote_escala(escala)
+        _recarregar_mascote()
+
+    def _mascote_roam(on: bool):
+        cfg.set_mascote_roam(on)
+        overlay.set_roam(on)
+
+    def _instalar_mascote():
+        from PyQt6.QtWidgets import QInputDialog
+        from mascotes import petdex
+        termo, ok = QInputDialog.getText(
+            panel, "Mascote do Petdex", "Buscar (ex.: capybara, cat, dog, sloth):"
+        )
+        if not ok or not termo.strip():
+            return
+        try:
+            achados = petdex.procurar(termo, limite=25)
+        except Exception as e:  # noqa: BLE001 - rede/registro fora do ar
+            tray.show_notification("Petdex indisponivel", str(e)[:120])
+            return
+        if not achados:
+            tray.show_notification("Petdex", f"Nada encontrado para '{termo}'.")
+            return
+        nomes = [f"{p.get('displayName') or p['slug']}  ({p['slug']})" for p in achados]
+        escolha, ok = QInputDialog.getItem(panel, "Petdex", "Escolha o mascote:", nomes, 0, False)
+        if not ok or not escolha:
+            return
+        slug = achados[nomes.index(escolha)]["slug"]
+        try:
+            petdex.instalar(slug)
+        except Exception as e:  # noqa: BLE001
+            tray.show_notification("Falha ao instalar", str(e)[:120])
+            return
+        _escolher_mascote(slug)
+        tray.show_notification("Mascote instalado", slug)
+
+    overlay.set_roam(cfg.mascote_roam)
+    tray.on_set_mascote.connect(_escolher_mascote)
+    tray.on_mascote_escala.connect(_mascote_escala)
+    tray.on_toggle_mascote_roam.connect(_mascote_roam)
+    tray.on_instalar_mascote.connect(_instalar_mascote)
+
     # Lesson recording
     def _record_start():
         out = manager.start_recording()

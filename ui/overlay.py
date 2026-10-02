@@ -24,6 +24,7 @@ from PyQt6.QtGui import (
 )
 
 from ui.preguica import Preguica
+from ui.mascote import carregar_ativo
 from config import cfg
 
 
@@ -242,6 +243,15 @@ class CursorOverlay(QWidget):
         # Bichinho e trilha de galhos (pontos de apoio vindos do RAG)
         self._tema: str = getattr(cfg, "buddy_theme", TEMA_PREGUICA)
         self._bicho = Preguica(escala=getattr(cfg, "buddy_escala", 2))
+        # Mascote animado (Petdex): se houver, ele substitui a preguica.
+        self._mascote = None
+        try:
+            self._mascote = carregar_ativo(cfg)
+        except Exception:
+            self._mascote = None
+        self._roam = bool(getattr(cfg, "mascote_roam", False))
+        self._roam_alvo = None
+        self._roam_prox = 0.0
         self._galhos: list[dict] = []
         self._trilha: list[QPointF] = []
         self._trilha_rotulos: list[str] = []
@@ -326,6 +336,15 @@ class CursorOverlay(QWidget):
     def set_escala_bichinho(self, escala: int):
         """Recria o bicho noutro tamanho. Escala inteira, para nao borrar."""
         self._bicho = Preguica(escala=max(1, int(escala)))
+
+    def set_mascote(self, mascote):
+        """Troca o mascote animado ativo (None volta para a preguica)."""
+        self._mascote = mascote
+
+    def set_roam(self, on: bool):
+        """Liga/desliga o passeio autonomo do mascote."""
+        self._roam = bool(on)
+        self._roam_alvo = None
 
     def definir_trilha(self, galhos: list[dict]):
         """Percorre uma trilha de galhos — os pontos de apoio do RAG.
@@ -608,7 +627,20 @@ class CursorOverlay(QWidget):
             return
 
         # ── Normal cursor-follow spring ──
-        target = QPointF(real.x() + OFFSET_X, real.y() + OFFSET_Y)
+        # Roam: ocioso e solto, o mascote passeia sozinho pela tela (chega aos
+        # locais sozinho). Qualquer atividade do agente assume o controle.
+        if self._roam and self._mode == MODE_IDLE and not self._galhos:
+            agora = time.monotonic()
+            if self._roam_alvo is None or agora >= self._roam_prox:
+                self._roam_alvo = QPointF(
+                    random.uniform(80, max(160, self.width() - 80)),
+                    random.uniform(80, max(160, self.height() - 80)),
+                )
+                self._roam_prox = agora + random.uniform(2.5, 5.0)
+            target = QPointF(self.x() + self._roam_alvo.x(),
+                             self.y() + self._roam_alvo.y())
+        else:
+            target = QPointF(real.x() + OFFSET_X, real.y() + OFFSET_Y)
         stiffness, damping = 0.28, 0.62
 
         # Spring
@@ -654,6 +686,8 @@ class CursorOverlay(QWidget):
             self._draw_waveform(p, cx, cy)
         elif self._mode == MODE_THINKING:
             self._draw_spinner(p, cx, cy)
+        elif self._mascote is not None and self._mascote.disponivel:
+            self._draw_mascote(p, cx, cy)
         elif self._tema == TEMA_PREGUICA and self._bicho.disponivel:
             self._draw_preguica(p, cx, cy)
         else:
@@ -869,6 +903,35 @@ class CursorOverlay(QWidget):
             if rotulo:
                 self._outlined_text(p, pt[0] + 8, pt[1] - 6, rotulo,
                                     GALHO_COR_CLARA, 1.0)
+
+    def _estado_mascote(self, voando: bool) -> str:
+        """Mapeia o que o app esta fazendo para um estado do atlas Petdex."""
+        if voando:
+            dx = self._fly_end_pos.x() - self._fly_start_pos.x()
+            return "running-right" if dx >= 0 else "running-left"
+        if self._flight_phase == _PHASE_DWELLING:
+            return "jumping"
+        # Passeando: corre para o lado em que anda.
+        if self._roam and self._mode == MODE_IDLE and not self._galhos and abs(self._vel.x()) > 0.4:
+            return "running-right" if self._vel.x() >= 0 else "running-left"
+        return {
+            MODE_LISTENING: "review",
+            MODE_THINKING: "running",
+            MODE_SPEAKING: "waving",
+        }.get(self._mode, "idle")
+
+    def _draw_mascote(self, p, cx, cy):
+        """Desenha o mascote animado (Petdex) no estado do momento."""
+        voando = self._flight_phase in (_PHASE_FLYING, _PHASE_RETURNING)
+        pm = self._mascote.quadro_em(self._estado_mascote(voando), self._tempo_bicho)
+        if pm is None:
+            return
+        desloc_y = 6 if (self._galhos and not voando) else 0
+        p.save()
+        p.translate(cx, cy + desloc_y)
+        p.scale(self._flight_scale, self._flight_scale)
+        p.drawPixmap(int(-pm.width() / 2), int(-pm.height() / 2), pm)
+        p.restore()
 
     def _draw_preguica(self, p, cx, cy):
         """O bicho-preguica pendurado, com o balanco do trajeto."""
