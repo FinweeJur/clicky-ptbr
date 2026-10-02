@@ -33,6 +33,7 @@ Desktop.ini
 .DS_Store
 
 # Mascotes baixados do Petdex (arte de terceiros: nao versionar).
-# A preguica e arte NOSSA (assets/make_preguica_petdex.py): fica no repo.
+# A preguica e a onca sao arte NOSSA (assets/make_*_petdex.py): ficam no repo.
 mascotes/instalados/*
 !mascotes/instalados/preguica/
+!mascotes/instalados/onca/

@@ -1,0 +1,19 @@
+{
+  "id": "onca",
+  "displayName": "Onca-pintada",
+  "cellW": 96,
+  "cellH": 72,
+  "rows": [
+    "idle",
+    "running-right",
+    "running-left",
+    "waving",
+    "jumping",
+    "failed",
+    "waiting",
+    "running",
+    "review"
+  ],
+  "framesPerState": 6,
+  "loopMs": 1100
+}
