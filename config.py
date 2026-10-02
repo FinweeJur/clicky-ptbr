@@ -265,6 +265,12 @@ class Config:
     # Mascote animado (padrao Petdex). Vazio = primeiro instalado. A escala e
     # um float sobre os pixels nativos (192x208); ~0.35 deixa o bicho pequeno.
     mascote_slug: str = field(default_factory=lambda: os.getenv("CLICKY_MASCOTE_SLUG", "").strip())
+    # Mascotes na tela (quantos a pessoa quiser). Vem de CLICKY_MASCOTE_SLUGS
+    # (separado por virgula); se vazio, cai no CLICKY_MASCOTE_SLUG (compat).
+    mascote_slugs: list[str] = field(default_factory=lambda: (
+        [s.strip() for s in os.getenv("CLICKY_MASCOTE_SLUGS", "").split(",") if s.strip()]
+        or ([os.getenv("CLICKY_MASCOTE_SLUG", "").strip()] if os.getenv("CLICKY_MASCOTE_SLUG", "").strip() else [])
+    ))
     mascote_escala: float = field(default_factory=lambda: float(os.getenv("CLICKY_MASCOTE_ESCALA", "0.35") or 0.35))
     # Roam: quando ligado, o bicho passeia sozinho pela tela enquanto ocioso.
     mascote_roam: bool = field(default_factory=lambda: os.getenv(
@@ -276,6 +282,21 @@ class Config:
         self.mascote_slug = (slug or "").strip()
         os.environ["CLICKY_MASCOTE_SLUG"] = self.mascote_slug
         self._write_env("CLICKY_MASCOTE_SLUG", self.mascote_slug)
+
+    def set_mascote_slugs(self, slugs) -> None:
+        """Define ate 3 mascotes na tela, gravando no .env.
+
+        Mantem `mascote_slug` (o primeiro) para compatibilidade com o codigo
+        antigo de mascote unico.
+        """
+        lista = [s.strip() for s in (slugs or []) if s and s.strip()]
+        self.mascote_slugs = lista
+        os.environ["CLICKY_MASCOTE_SLUGS"] = ",".join(lista)
+        self._write_env("CLICKY_MASCOTE_SLUGS", ",".join(lista))
+        primeiro = lista[0] if lista else ""
+        self.mascote_slug = primeiro
+        os.environ["CLICKY_MASCOTE_SLUG"] = primeiro
+        self._write_env("CLICKY_MASCOTE_SLUG", primeiro)
 
     def set_mascote_escala(self, escala: float) -> None:
         """Define o tamanho do mascote (0.1 a 3.0), gravando no .env."""

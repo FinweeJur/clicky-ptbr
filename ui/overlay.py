@@ -24,7 +24,7 @@ from PyQt6.QtGui import (
 )
 
 from ui.preguica import Preguica
-from ui.mascote import carregar_ativo
+from ui.mascote import carregar_ativos
 from config import cfg
 
 
@@ -243,10 +243,12 @@ class CursorOverlay(QWidget):
         # Bichinho e trilha de galhos (pontos de apoio vindos do RAG)
         self._tema: str = getattr(cfg, "buddy_theme", TEMA_PREGUICA)
         self._bicho = Preguica(escala=getattr(cfg, "buddy_escala", 2))
-        # Mascote animado (Petdex): se houver, ele substitui a preguica.
+        # Mascotes animados (Petdex): ate 3 na tela. O primeiro substitui a
+        # preguica e faz o papel de ponteiro; os outros passeiam sozinhos.
         self._mascote = None
+        self._mascotes_extra: list[dict] = []
         try:
-            self._mascote = carregar_ativo(cfg)
+            self.set_mascotes(carregar_ativos(cfg))
         except Exception:
             self._mascote = None
         self._roam = bool(getattr(cfg, "mascote_roam", False))
@@ -338,8 +340,26 @@ class CursorOverlay(QWidget):
         self._bicho = Preguica(escala=max(1, int(escala)))
 
     def set_mascote(self, mascote):
-        """Troca o mascote animado ativo (None volta para a preguica)."""
-        self._mascote = mascote
+        """Compat: um mascote animado (None volta para a preguica)."""
+        self.set_mascotes([mascote] if mascote is not None else [])
+
+    def set_mascotes(self, mascotes):
+        """Define os mascotes: o primeiro e o ponteiro, os demais passeiam."""
+        lista = [m for m in (mascotes or [])
+                 if m is not None and getattr(m, "disponivel", False)]
+        self._mascote = lista[0] if lista else None
+        self._mascotes_extra = []
+        for m in lista[1:]:
+            self._mascotes_extra.append({
+                "mascote": m,
+                "pos": QPointF(
+                    random.uniform(120, max(220, self.width() - 120)),
+                    random.uniform(120, max(220, self.height() - 120)),
+                ),
+                "vel": QPointF(0, 0),
+                "alvo": None,
+                "prox": 0.0,
+            })
 
     def set_roam(self, on: bool):
         """Liga/desliga o passeio autonomo do mascote."""
@@ -486,6 +506,23 @@ class CursorOverlay(QWidget):
         geo.setBottom(geo.bottom() - 2)
         self.setGeometry(geo)
 
+    def _tick_extras(self):
+        """Move os mascotes 2 e 3: cada um passeia para um alvo proprio."""
+        if not self._mascotes_extra:
+            return
+        agora = time.monotonic()
+        for it in self._mascotes_extra:
+            if it["alvo"] is None or agora >= it["prox"]:
+                it["alvo"] = QPointF(
+                    random.uniform(80, max(200, self.width() - 80)),
+                    random.uniform(80, max(200, self.height() - 80)),
+                )
+                it["prox"] = agora + random.uniform(3.0, 6.0)
+            ax = (it["alvo"].x() - it["pos"].x()) * 0.05
+            ay = (it["alvo"].y() - it["pos"].y()) * 0.05
+            it["vel"] = QPointF(it["vel"].x() * 0.92 + ax, it["vel"].y() * 0.92 + ay)
+            it["pos"] = QPointF(it["pos"].x() + it["vel"].x(), it["pos"].y() + it["vel"].y())
+
     def _release_lock(self):
         self._locked_pos = None
         self._bubble_text = ""
@@ -536,7 +573,7 @@ class CursorOverlay(QWidget):
 
     def _tick(self):
         self._tempo_bicho += 0.016
-        self._atualizar_discricao()
+        self._tick_extras()
         qp = QCursor.pos()
         real = QPointF(qp.x(), qp.y())
 
@@ -678,6 +715,10 @@ class CursorOverlay(QWidget):
         # Galhos (pontos de apoio) — tambem sob o bicho
         if self._galhos:
             self._draw_galhos(p)
+
+        # Mascotes extras (2 e 3) passeiam pela tela
+        if self._mascotes_extra:
+            self._draw_mascotes_extra(p)
 
         cx = self._display_pos.x() - self.x()
         cy = self._display_pos.y() - self.y()
@@ -932,6 +973,25 @@ class CursorOverlay(QWidget):
         p.scale(self._flight_scale, self._flight_scale)
         p.drawPixmap(int(-pm.width() / 2), int(-pm.height() / 2), pm)
         p.restore()
+
+    def _estado_extra(self, vel) -> str:
+        """Estado dos mascotes que passeiam: corre para o lado que anda."""
+        if abs(vel.x()) > 0.4:
+            return "running-right" if vel.x() >= 0 else "running-left"
+        return {
+            MODE_LISTENING: "review",
+            MODE_THINKING: "running",
+            MODE_SPEAKING: "waving",
+        }.get(self._mode, "idle")
+
+    def _draw_mascotes_extra(self, p):
+        """Desenha os mascotes 2 e 3, cada um no seu ponto."""
+        for it in self._mascotes_extra:
+            cx = it["pos"].x() - self.x()
+            cy = it["pos"].y() - self.y()
+            pm = it["mascote"].quadro_em(self._estado_extra(it["vel"]), self._tempo_bicho)
+            if pm is not None:
+                p.drawPixmap(int(cx - pm.width() / 2), int(cy - pm.height() / 2), pm)
 
     def _draw_preguica(self, p, cx, cy):
         """O bicho-preguica pendurado, com o balanco do trajeto."""

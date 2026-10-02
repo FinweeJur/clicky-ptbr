@@ -62,9 +62,11 @@ class TrayManager(QObject):
     on_set_buddy_theme        = pyqtSignal(str)  # "preguica" | "triangulo"
     on_set_buddy_escala       = pyqtSignal(int)  # 1=36px, 2=72px, 3=108px
     on_set_mascote            = pyqtSignal(str)  # slug do mascote (Petdex)
+    on_mascote_slugs          = pyqtSignal(list)  # ate 3 slugs na tela
     on_mascote_escala         = pyqtSignal(float)  # 0.1 a 3.0
     on_toggle_mascote_roam    = pyqtSignal(bool)
     on_instalar_mascote       = pyqtSignal()      # abre a busca no Petdex
+    on_mascote_aviso          = pyqtSignal(str)   # mensagem curta ao dono
     on_sessao_conectar        = pyqtSignal()     # conectar a uma sessao do Seu Nono do site
 
     def __init__(self, parent=None):
@@ -106,6 +108,9 @@ class TrayManager(QObject):
         self._buddy_escala = cfg.buddy_escala
         # Mascote animado (Petdex).
         self._mascote_slug = cfg.mascote_slug
+        self._mascote_slugs = list(getattr(cfg, "mascote_slugs", []) or [])
+        if not self._mascote_slugs and cfg.mascote_slug:
+            self._mascote_slugs = [cfg.mascote_slug]
         self._mascote_escala = cfg.mascote_escala
         self._mascote_roam = cfg.mascote_roam
 
@@ -596,18 +601,20 @@ class TrayManager(QObject):
         self.on_toggle_slow_mode.emit(checked)
 
     def _build_mascote_submenu(self, menu: QMenu):
-        """Galeria de mascotes animados (Petdex): instalados, buscar, tamanho, roam."""
+        """Galeria de mascotes (Petdex): ate 3 na tela, buscar, tamanho, roam."""
         from mascotes import petdex
         instalados = petdex.listar_instalados()
-        ativo = self._mascote_slug or (instalados[0] if instalados else "")
+        ativos = list(self._mascote_slugs)
 
-        m = menu.addMenu("Mascote animado (Petdex)")
+        m = menu.addMenu("Mascotes na tela")
         if not instalados:
             vazio = m.addAction("Nenhum instalado")
             vazio.setEnabled(False)
         for slug in instalados:
-            acao = m.addAction(("● " if slug == ativo else "    ") + slug)
-            acao.triggered.connect(lambda _=False, s=slug: self.on_set_mascote.emit(s))
+            acao = m.addAction(slug)
+            acao.setCheckable(True)
+            acao.setChecked(slug in ativos)
+            acao.triggered.connect(lambda _=False, s=slug: self._toggle_mascote(s))
 
         m.addSeparator()
         inst = m.addAction("Buscar e instalar no Petdex...")
@@ -624,6 +631,16 @@ class TrayManager(QObject):
         roam.setCheckable(True)
         roam.setChecked(self._mascote_roam)
         roam.triggered.connect(lambda c: self.on_toggle_mascote_roam.emit(c))
+
+    def _toggle_mascote(self, slug: str):
+        """Liga/desliga um mascote. Sem teto: a pessoa coloca quantos quiser."""
+        lista = list(self._mascote_slugs)
+        if slug in lista:
+            lista.remove(slug)
+        else:
+            lista.append(slug)
+        self._mascote_slugs = lista
+        self.on_mascote_slugs.emit(lista)
 
     def _set_buddy_theme(self, tema: str):
         """Troca o bichinho entre preguica e triangulo, e avisa o app."""

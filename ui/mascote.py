@@ -124,17 +124,32 @@ class Mascote:
         return quadros[min(n - 1, int(fracao * n))]
 
 
-def carregar_ativo(cfg) -> Mascote | None:
-    """Carrega o mascote ativo da config, se estiver instalado."""
-    slug = getattr(cfg, "mascote_slug", "") or ""
+def carregar_ativos(cfg) -> list[Mascote]:
+    """Carrega os mascotes ativos da config (lista ou slug unico).
+
+    Ordem: `mascote_slugs` (lista) -> `mascote_slug` (compat) -> primeiro
+    instalado. Slugs sem spritesheet sao ignorados.
+    """
+    slugs = list(getattr(cfg, "mascote_slugs", []) or [])
+    if not slugs:
+        unico = getattr(cfg, "mascote_slug", "")
+        slugs = [unico] if unico else []
+    if not slugs:
+        slugs = petdex.listar_instalados()[:1]
+
     escala = getattr(cfg, "mascote_escala", 0.35)
-    if not slug:
-        instalados = petdex.listar_instalados()
-        if not instalados:
-            return None
-        slug = instalados[0]
-    dirp = petdex.dir_do_mascote(slug)
-    if not (dirp / "spritesheet.png").exists():
-        return None
-    mascote = Mascote(dirp, escala=escala)
-    return mascote if mascote.disponivel else None
+    ativos: list[Mascote] = []
+    for slug in slugs:
+        dirp = petdex.dir_do_mascote(slug)
+        if not (dirp / "spritesheet.png").exists():
+            continue
+        mascote = Mascote(dirp, escala=escala)
+        if mascote.disponivel:
+            ativos.append(mascote)
+    return ativos
+
+
+def carregar_ativo(cfg) -> Mascote | None:
+    """Compatibilidade: o primeiro mascote ativo, ou None."""
+    ativos = carregar_ativos(cfg)
+    return ativos[0] if ativos else None

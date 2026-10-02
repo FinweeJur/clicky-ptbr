@@ -227,14 +227,14 @@ def main():
     tray.on_set_buddy_theme.connect(cfg.set_buddy_theme)
     tray.on_set_buddy_escala.connect(cfg.set_buddy_escala)
 
-    # Mascote animado (Petdex): aplica o salvo, recarrega ao trocar e instala
-    # pela busca no registro publico.
+    # Mascotes animados (Petdex): quantos a pessoa quiser. O primeiro e o
+    # ponteiro; os demais passeiam pela tela.
     def _recarregar_mascote():
-        from ui.mascote import carregar_ativo
-        overlay.set_mascote(carregar_ativo(cfg))
+        from ui.mascote import carregar_ativos
+        overlay.set_mascotes(carregar_ativos(cfg))
 
-    def _escolher_mascote(slug: str):
-        cfg.set_mascote_slug(slug)
+    def _aplicar_mascotes(lista):
+        cfg.set_mascote_slugs(lista)
         _recarregar_mascote()
 
     def _mascote_escala(escala: float):
@@ -271,14 +271,18 @@ def main():
         except Exception as e:  # noqa: BLE001
             tray.show_notification("Falha ao instalar", str(e)[:120])
             return
-        _escolher_mascote(slug)
+        lista = list(cfg.mascote_slugs)
+        if slug not in lista:
+            lista.append(slug)
+        _aplicar_mascotes(lista)
         tray.show_notification("Mascote instalado", slug)
 
     overlay.set_roam(cfg.mascote_roam)
-    tray.on_set_mascote.connect(_escolher_mascote)
+    tray.on_mascote_slugs.connect(_aplicar_mascotes)
     tray.on_mascote_escala.connect(_mascote_escala)
     tray.on_toggle_mascote_roam.connect(_mascote_roam)
     tray.on_instalar_mascote.connect(_instalar_mascote)
+    tray.on_mascote_aviso.connect(lambda msg: tray.show_notification("Mascotes", msg))
 
     # Lesson recording
     def _record_start():
